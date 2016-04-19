@@ -1,89 +1,110 @@
 function x = admm(y)
 
-    n = length(y);
-    % questa H di prova
-    m = n;
-    H = eye(n);
+n = length(y);
 
-    % init
-    x = zeros(n);
-    d = zeros(n);
+% H di prova
+H = [1 0 0 1 0 0; 
+     0 1 0 0 1 0; 
+     0 0 1 0 0 1];
+[m,n] = size(H);
 
-    % parametri
-    mu = 1;
-    alpha = 1;
-    epsilon = 1;
+% init
+x = zeros(n,1);
+d = zeros(m,1);   % numero di check
+Nv = zeros(n,1);  % numero di vicini
 
-    for j=1:m
-        for i=1:n
-           if H(j,i) == 1 
-               d(j) = d(j)+1;
-           end
+% parametri
+mu = 4;  
+alpha = 0.6;     
+epsilon = 1^-5;
+sigma_square = 10^-16;
+
+%costruzione d, Nv
+for j=1:m
+    for i=1:n
+        if H(j,i) == 1
+            d(j) = d(j)+1;
+            Nv(i) = Nv(i) +1;
         end
     end
+end
 
-    P = zeros(1,m);
+%costruzione P
+P = zeros(n, n, m); %P(x,y,z) x riga, y colonna, z la z-esima matrice
 
-    % costruisco sparsa mettendo come indice j la Pj e 
-    % k come indice di riga e i di colonna
-    for j=1:m
-        k=0;
-        P(1,j) = sparse(d(j),n);
-        current = P(1,j);
-        for i=1:n
-            if H(j,i) == 1
-                current(k,i) = 1;
-                k = k+1;
-            end
+for j=1:m
+    k = 1; %tiene conto della riga della Pj
+    for i=1:n
+        if H(j,i) == 1
+            P(k, i, j) = 1;
+            k = k + 1;
         end
     end
+end
 
-    % manca /2*sigma_w^2
-    gamma = -y;
 
-    % seleziono il j-esimo attraverso la colonna
-    lambda = zeros(n,m);
-    z = 0.5*ones(n,m);
+% log-likelihood ratio
+gamma = -y/(2*sigma_square);
 
-    counter = 0;
-    limit = 100;
+% seleziono il j-esimo attraverso la colonna
+lambda = zeros(n,m);
+z = 0.5*ones(n,m);
 
-    while counter<=limit
+counter = 0;
+limit = 100;
 
-        % x-update
-        x = inv(mu*(P')*P - 2*alpha)*(P'*(mu*z-lambda)-gamma-alpha);
-        for i=1:n
-            if x(i)<0
-                x(i) = 0;
-            elseif x(i)>1
-                x(i) = 1;
-            end
-        end
-        z_old = z;
-        % lambda&zeta-update
-        v = zeros(n,m); % seleziono il j-esimo attraverso la colonna
-        for j=1:m 
-           v(:,j) = P(j)*x + lambda(:,j)/mu;
-           z(:,j) = ProjPolytope(v(:,j));
-           lambda(:,j) = lambda(:,j) + mu*(P(j)*x - z(:,j));
-        end
-
-        counter = counter + 1;
-        
-        % check
-        sum1 = zeros(m);
-        sum2 = zeros(m);
+while counter<=limit
+    
+    % x-update
+    
+    %paper version
+    
+    t = zeros(n,1); %vettore ausilario
+    for i=1:n
         for j=1:m
-            sum1 = sum1 + (P(j)*x-z(:,j))^2;
-            sum2 = sum2 + (z(:,j)-z_old(:,j))^2;
+            t(i) = t(i) + z(i,j) - lambda(i,j)/mu ;
         end
-        if sum1<epsilon^2*m*d
-            break;
-        elseif sum2<epsilon^2*m*d
-            break;
+        t(i) = t(i) - gamma(i)/mu;
+    end
+    for i=1:n
+        x(i) = (1/(Nv(i) - 2*alpha/mu))*(t(i)-alpha/mu);
+    end
+    
+    
+    %fast version
+    %x = inv(mu*(P')*P - 2*alpha)*(P'*(mu*z-lambda)-gamma-alpha);
+    
+    
+    for i=1:n
+        if x(i)<0
+            x(i) = 0;
+        elseif x(i)>1
+            x(i) = 1;
         end
     end
-
-    return x;
-
+    z_old = z;
+    
+    % lambda&zeta-update
+    v = zeros(n,m); % seleziono il j-esimo attraverso la colonna
+    for j=1:m
+        v(:,j) = P(:,:,j)*x + lambda(:,j)/mu;
+        z(:,j) = ProjPolytope(v(:,j));
+        lambda(:,j) = lambda(:,j) + mu*(P(:,:,j)*x - z(:,j));
+    end
+    
+    counter = counter + 1;
+    
+%     % check
+%     sum1 = zeros(m);
+%     sum2 = zeros(m);
+%     for j=1:m
+%         sum1 = sum1 + (P(1:d(j),:,j)*x-z(:,j))^2;
+%         sum2 = sum2 + (z(:,j)-z_old(:,j))^2;
+%     end
+%     if sum1<epsilon^2*m*d
+%         break;
+%     elseif sum2<epsilon^2*m*d
+%         break;
+%     end
+end
 end
